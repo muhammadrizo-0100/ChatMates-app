@@ -15,17 +15,12 @@ dotenv.config();
 const app = express();
 const server = http.createServer(app);
 
-// --- MUHIM: RUXSAT BERILGAN MANZILLAR ---
-const allowedOrigins = [
-    "https://chat-mates-app.vercel.app",
-    "http://localhost:5173"
-];
-
 // 1. Socket.io CORS sozlamalari
 const io = new Server(server, {
     pingTimeout: 60000,
     cors: {
-        origin: allowedOrigins,
+        // Render'dagi CLIENT_URL yoki localhost'ga ruxsat beramiz
+        origin: [process.env.CLIENT_URL, "http://localhost:5173"],
         methods: ["GET", "POST", "PUT", "DELETE"],
         credentials: true
     }
@@ -36,7 +31,7 @@ app.use(express.json());
 
 // 2. Express CORS sozlamalari
 app.use(cors({
-    origin: allowedOrigins,
+    origin: [process.env.CLIENT_URL, "http://localhost:5173"],
     methods: ["GET", "POST", "PUT", "DELETE"],
     credentials: true
 }));
