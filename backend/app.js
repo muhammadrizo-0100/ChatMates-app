@@ -15,12 +15,10 @@ dotenv.config();
 const app = express();
 const server = http.createServer(app);
 
-// 1. Socket.io CORS sozlamalari
 const io = new Server(server, {
     pingTimeout: 60000,
     cors: {
-        // Render'dagi CLIENT_URL yoki localhost'ga ruxsat beramiz
-        origin: [process.env.CLIENT_URL, "http://localhost:5173"],
+        origin: process.env.FRONTEND_URL || "http://localhost:5173",
         methods: ["GET", "POST", "PUT", "DELETE"],
         credentials: true
     }
@@ -28,11 +26,8 @@ const io = new Server(server, {
 
 app.set("socketio", io);
 app.use(express.json());
-
-// 2. Express CORS sozlamalari
 app.use(cors({
-    origin: [process.env.CLIENT_URL, "http://localhost:5173"],
-    methods: ["GET", "POST", "PUT", "DELETE"],
+    origin: process.env.FRONTEND_URL || "http://localhost:5173",
     credentials: true
 }));
 
@@ -43,22 +38,26 @@ app.use("/api", messageRoute);
 if (setupSwagger) setupSwagger(app);
 
 // ---------------- SOCKET.IO LOGIKASI ----------------
-let onlineUsers = new Map();
+let onlineUsers = new Map(); // Map ishlatish qidirishni tezlashtiradi
 
 io.on("connection", (socket) => {
     console.log("🟢 Yangi ulanish:", socket.id);
 
+    // 1. SETUP & ONLINE STATUS
     socket.on("setup", (userData) => {
         if (userData?.id) {
             const userIdString = String(userData.id);
             socket.join(userIdString);
+
             onlineUsers.set(userIdString, socket.id);
             console.log(`👤 Foydalanuvchi ${userIdString} onlayn.`);
+
             io.emit("get-online-users", Array.from(onlineUsers.keys()));
             socket.emit("connected");
         }
     });
 
+    // 2. JOIN CHAT (Xona ichiga kirish)
     socket.on("join chat", (room) => {
         if (room) {
             socket.join(String(room));
@@ -66,19 +65,24 @@ io.on("connection", (socket) => {
         }
     });
 
+    // 3. NEW MESSAGE (Xabarni partnerga yetkazish)
     socket.on("new message", (newMessage) => {
         const chatId = String(newMessage.chat_id || newMessage.chatId);
         if (!chatId) return;
+        // Xonadagi hammaga (yuborgandan tashqari) xabarni yuboramiz
         socket.to(chatId).emit("message received", newMessage);
     });
 
+    // 4. READ STATUS (O'qilganlik statusini yuborish) - REFRESH MUAMMOSINI YECHIMI
     socket.on("read messages", (data) => {
         const { chatId, userId } = data;
         if (chatId) {
+            // Chat xonasidagilarga xabar beramiz
             socket.to(String(chatId)).emit("messages read", { chatId, userId });
         }
     });
 
+    // 5. DELETE MESSAGE (O'chirishni real-time qilish) - REFRESH MUAMMOSINI YECHIMI
     socket.on("delete message", (data) => {
         const { messageId, chatId } = data;
         if (chatId) {
@@ -86,6 +90,7 @@ io.on("connection", (socket) => {
         }
     });
 
+    // 6. EDIT MESSAGE (Tahrirlashni real-time qilish)
     socket.on("edit message", (data) => {
         const { id, text, chatId } = data;
         if (chatId) {
@@ -93,9 +98,11 @@ io.on("connection", (socket) => {
         }
     });
 
+    // 7. TYPING STATUS
     socket.on("typing", (room) => socket.to(String(room)).emit("typing", room));
     socket.on("stop typing", (room) => socket.to(String(room)).emit("stop typing", room));
 
+    // 8. DISCONNECT
     socket.on("disconnect", async () => {
         let disconnectedUserId = null;
         for (let [userId, socketId] of onlineUsers.entries()) {
