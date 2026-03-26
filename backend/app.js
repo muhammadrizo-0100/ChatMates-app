@@ -15,10 +15,18 @@ dotenv.config();
 const app = express();
 const server = http.createServer(app);
 
+// 1. CORS manzillarini aniqlash (Render va Vercel uchun)
+const allowedOrigins = [
+    process.env.FRONTEND_URL,
+    "http://localhost:5173",
+    "https://chat-mates-app.vercel.app" // O'zingizning aniq vercel manzilingizni qo'shing
+];
+
+// 2. Socket.io CORS sozlamalari
 const io = new Server(server, {
     pingTimeout: 60000,
     cors: {
-        origin: process.env.FRONTEND_URL || "http://localhost:5173",
+        origin: allowedOrigins,
         methods: ["GET", "POST", "PUT", "DELETE"],
         credentials: true
     }
@@ -26,8 +34,11 @@ const io = new Server(server, {
 
 app.set("socketio", io);
 app.use(express.json());
+
+// 3. Express CORS sozlamalari
 app.use(cors({
-    origin: process.env.FRONTEND_URL || "http://localhost:5173",
+    origin: allowedOrigins,
+    methods: ["GET", "POST", "PUT", "DELETE"],
     credentials: true
 }));
 
@@ -38,7 +49,7 @@ app.use("/api", messageRoute);
 if (setupSwagger) setupSwagger(app);
 
 // ---------------- SOCKET.IO LOGIKASI ----------------
-let onlineUsers = new Map(); // Map ishlatish qidirishni tezlashtiradi
+let onlineUsers = new Map(); 
 
 io.on("connection", (socket) => {
     console.log("🟢 Yangi ulanish:", socket.id);
@@ -48,7 +59,6 @@ io.on("connection", (socket) => {
         if (userData?.id) {
             const userIdString = String(userData.id);
             socket.join(userIdString);
-
             onlineUsers.set(userIdString, socket.id);
             console.log(`👤 Foydalanuvchi ${userIdString} onlayn.`);
 
@@ -57,7 +67,7 @@ io.on("connection", (socket) => {
         }
     });
 
-    // 2. JOIN CHAT (Xona ichiga kirish)
+    // 2. JOIN CHAT
     socket.on("join chat", (room) => {
         if (room) {
             socket.join(String(room));
@@ -65,24 +75,23 @@ io.on("connection", (socket) => {
         }
     });
 
-    // 3. NEW MESSAGE (Xabarni partnerga yetkazish)
+    // 3. NEW MESSAGE
     socket.on("new message", (newMessage) => {
         const chatId = String(newMessage.chat_id || newMessage.chatId);
         if (!chatId) return;
-        // Xonadagi hammaga (yuborgandan tashqari) xabarni yuboramiz
+        // Xabarni xonadagi boshqalarga yuborish
         socket.to(chatId).emit("message received", newMessage);
     });
 
-    // 4. READ STATUS (O'qilganlik statusini yuborish) - REFRESH MUAMMOSINI YECHIMI
+    // 4. READ STATUS
     socket.on("read messages", (data) => {
         const { chatId, userId } = data;
         if (chatId) {
-            // Chat xonasidagilarga xabar beramiz
             socket.to(String(chatId)).emit("messages read", { chatId, userId });
         }
     });
 
-    // 5. DELETE MESSAGE (O'chirishni real-time qilish) - REFRESH MUAMMOSINI YECHIMI
+    // 5. DELETE MESSAGE
     socket.on("delete message", (data) => {
         const { messageId, chatId } = data;
         if (chatId) {
@@ -90,7 +99,7 @@ io.on("connection", (socket) => {
         }
     });
 
-    // 6. EDIT MESSAGE (Tahrirlashni real-time qilish)
+    // 6. EDIT MESSAGE
     socket.on("edit message", (data) => {
         const { id, text, chatId } = data;
         if (chatId) {
@@ -115,6 +124,7 @@ io.on("connection", (socket) => {
         if (disconnectedUserId) {
             onlineUsers.delete(disconnectedUserId);
             try {
+                // Ma'lumotlar bazasini yangilash (asinxron)
                 await User.update(
                     { lastSeen: new Date() },
                     { where: { id: disconnectedUserId } }
@@ -129,8 +139,18 @@ io.on("connection", (socket) => {
 });
 
 const PORT = process.env.PORT || 5000;
-sequelize.sync({ alter: false }).then(() => {
-    server.listen(PORT, () => {
-        console.log(`✅ Server portda ishlamoqda: ${PORT}`);
+
+// Ma'lumotlar bazasi bilan sinxronizatsiya va serverni ishga tushirish
+sequelize.authenticate()
+    .then(() => {
+        console.log('✅ Ma\'lumotlar bazasiga ulanish muvaffaqiyatli.');
+        return sequelize.sync({ alter: false });
+    })
+    .then(() => {
+        server.listen(PORT, () => {
+            console.log(`✅ Server portda ishlamoqda: ${PORT}`);
+        });
+    })
+    .catch(err => {
+        console.error('❌ MB ulanishda xato:', err);
     });
-});
