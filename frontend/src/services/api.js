@@ -3,8 +3,7 @@ import axios from "axios";
 // 1. .env dan kelayotgan URLni olamiz
 const BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
 
-// 2. Linkni xavfsiz formatlash: 
-// Avval link oxiridagi barcha slashlarni olib tashlaymiz, keyin toza qilib /api qo'shamiz
+// 2. Linkni xavfsiz formatlash (replace orqali ortiqcha slashlarni tozalaymiz)
 const API_URL = `${BASE_URL.replace(/\/+$/, "")}/api`;
 
 const api = axios.create({
