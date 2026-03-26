@@ -9,7 +9,12 @@ const options = {
             version: "1.0.0",
             description: "Node.js, Sequelize va PostgreSQL yordamida yaratilgan Chat API",
         },
+        // SERVERS qismini mana shunday massiv ko'rinishida yozamiz
         servers: [
+            {
+                url: "https://chat-mates-backend-spen.onrender.com",
+                description: "Production server (Render)",
+            },
             {
                 url: "http://localhost:5000",
                 description: "Local server",
@@ -25,14 +30,16 @@ const options = {
             },
         },
     },
-    apis: ["./routes/*.js"], // Hamma routelardagi izohlarni o'qiydi
+    apis: ["./routes/*.js"],
 };
 
 const swaggerSpec = swaggerJSDoc(options);
 
 const setupSwagger = (app) => {
     app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
-    console.log("📖 Swagger dokumentatsiyasi: http://localhost:5000/api-docs");
+    // Logda qaysi serverda ishlayotganini ko'rsatish uchun:
+    const port = process.env.PORT || 5000;
+    console.log(`📖 Swagger dokumentatsiyasi portda ishlamoqda: ${port}`);
 };
 
 module.exports = setupSwagger;
