@@ -12,12 +12,12 @@ const options = {
         // SERVERS qismini mana shunday massiv ko'rinishida yozamiz
         servers: [
             {
-                url: "https://chat-mates-backend-spen.onrender.com",
-                description: "Production server (Render)",
+                url: "http://localhost:5000",
+                description: "Local server (Default)",
             },
             {
-                url: "http://localhost:5000",
-                description: "Local server",
+                url: "https://chat-mates-backend-spen.onrender.com",
+                description: "Production server (Render)",
             },
         ],
         components: {
