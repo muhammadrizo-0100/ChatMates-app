@@ -35,29 +35,28 @@ exports.accessChat = async (req, res) => {
 
         // 3. Agar chat mavjud bo'lmasa, yangi yaratish
         if (!chat) {
-            chat = await Chat.create({
+            const createdChat = await Chat.create({
                 user1_id: senderId,
                 user2_id: receiverId
             });
 
-            // Yangi yaratilgan chatni hamma ma'lumotlari (userlar) bilan qayta yuklash
-            chat = await Chat.findByPk(chat.id, {
+            // Yangi yaratilgan chatni hamma ma'lumotlari bilan qayta yuklash
+            chat = await Chat.findByPk(createdChat.id, {
                 include: [
                     { model: User, as: 'user1', attributes: ["id", "username", "firstname", "lastname", "avatar", "lastSeen"] },
                     { model: User, as: 'user2', attributes: ["id", "username", "firstname", "lastname", "avatar", "lastSeen"] }
                 ]
             });
 
-            // --- SOCKET.IO INTEGRATSIYASI ---
+            // --- SOCKET.IO: YANGI CHAT HAQIDA BILDIRISH ---
             const io = req.app.get("socketio");
             if (io) {
-                // Qabul qiluvchining shaxsiy xonasiga (room) yangi chat haqida ma'lumot yuboramiz
-                // Bu receiver'ning sidebar-ida yangi chat paydo bo'lishini ta'minlaydi
+                // Partnerning shaxsiy xonasiga (userId room) yangi chat ob'ektini yuboramiz
+                // Bu sherigining sidebar-ida chat srazi paydo bo'lishini ta'minlaydi
                 io.to(String(receiverId)).emit("new chat created", chat);
             }
         }
 
-        // 4. Javob qaytarish
         res.status(200).json(chat);
     } catch (err) {
         console.error("accessChat xatosi:", err);
@@ -65,7 +64,7 @@ exports.accessChat = async (req, res) => {
     }
 };
 
-// 2. GET ALL MY CHATS (Mening barcha suhbatlarim ro'yxati)
+// 2. GET ALL MY CHATS
 exports.getChats = async (req, res) => {
     try {
         const chats = await Chat.findAll({
@@ -73,16 +72,8 @@ exports.getChats = async (req, res) => {
                 [Op.or]: [{ user1_id: req.user.id }, { user2_id: req.user.id }]
             },
             include: [
-                {
-                    model: User,
-                    as: 'user1',
-                    attributes: ["id", "username", "firstname", "lastname", "avatar", "lastSeen"]
-                },
-                {
-                    model: User,
-                    as: 'user2',
-                    attributes: ["id", "username", "firstname", "lastname", "avatar", "lastSeen"]
-                },
+                { model: User, as: 'user1', attributes: ["id", "username", "firstname", "lastname", "avatar", "lastSeen"] },
+                { model: User, as: 'user2', attributes: ["id", "username", "firstname", "lastname", "avatar", "lastSeen"] },
                 {
                     model: Message,
                     as: "messages",
@@ -92,28 +83,19 @@ exports.getChats = async (req, res) => {
             ],
             order: [['updatedAt', 'DESC']]
         });
-
         res.json(chats);
     } catch (err) {
         res.status(500).json({ message: err.message });
     }
 };
 
-// 3. GET CHAT BY ID (Bitta chat ma'lumotlarini olish)
+// 3. GET CHAT BY ID
 exports.getChatById = async (req, res) => {
     try {
         const data = await Chat.findByPk(req.params.id, {
             include: [
-                {
-                    model: User,
-                    as: "user1",
-                    attributes: ["id", "username", "firstname", "lastname", "avatar", "lastSeen"]
-                },
-                {
-                    model: User,
-                    as: "user2",
-                    attributes: ["id", "username", "firstname", "lastname", "avatar", "lastSeen"]
-                },
+                { model: User, as: "user1", attributes: ["id", "username", "firstname", "lastname", "avatar", "lastSeen"] },
+                { model: User, as: "user2", attributes: ["id", "username", "firstname", "lastname", "avatar", "lastSeen"] },
                 {
                     model: Message,
                     as: "messages",
@@ -126,7 +108,7 @@ exports.getChatById = async (req, res) => {
         if (!data) return res.status(404).json({ message: "Chat topilmadi" });
 
         if (data.user1_id !== req.user.id && data.user2_id !== req.user.id) {
-            return res.status(403).json({ message: "Sizda bu chatni ko'rish huquqi yo'q" });
+            return res.status(403).json({ message: "Ruxsat yo'q" });
         }
 
         res.status(200).json(data);
@@ -138,15 +120,30 @@ exports.getChatById = async (req, res) => {
 // 4. DELETE CHAT (Suhbatni o'chirish)
 exports.deleteChat = async (req, res) => {
     try {
-        const chat = await Chat.findByPk(req.params.id);
+        const chatId = req.params.id;
+        const chat = await Chat.findByPk(chatId);
+
         if (!chat) return res.status(404).json({ message: "Chat topilmadi" });
 
         if (chat.user1_id !== req.user.id && chat.user2_id !== req.user.id) {
             return res.status(403).json({ message: "Sizda bu chatni o'chirish huquqi yo'q" });
         }
 
+        // Sherigini aniqlaymiz (bildirishnoma yuborish uchun)
+        const partnerId = chat.user1_id === req.user.id ? chat.user2_id : chat.user1_id;
+
         await chat.destroy();
-        res.json({ message: "Suhbat muvaffaqiyatli o'chirildi" });
+
+        // --- SOCKET.IO: CHAT O'CHIRILGANI HAQIDA BILDIRISH ---
+        const io = req.app.get("socketio");
+        if (io) {
+            // Sherigiga va o'ziga bu chat o'chganini yuboramiz
+            // Sidebar-dan o'chib ketishi uchun
+            io.to(String(partnerId)).emit("chat deleted", chatId);
+            io.to(String(req.user.id)).emit("chat deleted", chatId);
+        }
+
+        res.json({ message: "Suhbat muvaffaqiyatli o'chirildi", chatId });
     } catch (err) {
         res.status(500).json({ message: err.message });
     }

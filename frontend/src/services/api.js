@@ -49,9 +49,10 @@ export const chatApi = {
 };
 
 export const messageApi = {
-    sendMessage: (chat_id, text) => api.post("/message", {
+    sendMessage: (chat_id, text, receiverId) => api.post("/message", {
         chat_id: Number(chat_id),
-        text
+        text,
+        receiverId: Number(receiverId) // MUHIM: Partner ID
     }),
     getMessages: (chatId) => api.get(`/message/${chatId}`),
     editMessage: (id, text) => api.put(`/message/${id}`, { text }),

@@ -14,22 +14,34 @@ const Messages = ({ selectedChat, setSelectedChat, onChatCreated }) => {
     const [editingMessage, setEditingMessage] = useState(null);
     const [isPartnerTyping, setIsPartnerTyping] = useState(false);
     const [loading, setLoading] = useState(false);
-    const [isSending, setIsSending] = useState(false); // Yuborish jarayonini nazorat qilish
+    const [isSending, setIsSending] = useState(false);
 
     const scrollRef = useRef();
     const typingTimeoutRef = useRef(null);
-    const currentUserId = String(user?.id || user?._id);
+
+    // ID larni har doim String-ga o'girib solishtirish xavfsiz
+    const currentUserId = useMemo(() => String(user?.id || user?._id || ""), [user]);
 
     const partner = useMemo(() => {
         if (!selectedChat) return null;
-        return String(selectedChat.user1_id) === currentUserId
-            ? selectedChat.user2
-            : selectedChat.user1;
+
+        // 1. Agar qidiruvdan kelgan yangi chat bo'lsa
+        if (selectedChat.isNew) return selectedChat.user2 || selectedChat.User2;
+
+        // 2. Mavjud chat ichidan sherikni qidirish
+        const u1_id = String(selectedChat.user1_id || selectedChat.User1?.id || selectedChat.user1?.id || "");
+
+        const u1 = selectedChat.user1 || selectedChat.User1;
+        const u2 = selectedChat.user2 || selectedChat.User2;
+
+        return u1_id === currentUserId ? u2 : u1;
     }, [selectedChat, currentUserId]);
 
+    // --- TUZATISH: Online holatini tekshirish ---
     const isPartnerOnline = useMemo(() => {
         const partnerId = partner?.id || partner?._id;
-        return partnerId && onlineUsers.some(u => String(u) === String(partnerId));
+        if (!partnerId || !onlineUsers) return false;
+        return onlineUsers.some(u => String(u) === String(partnerId));
     }, [partner, onlineUsers]);
 
     // Xabarlarni yuklash
@@ -56,19 +68,17 @@ const Messages = ({ selectedChat, setSelectedChat, onChatCreated }) => {
         if (socket && selectedChat?.id && !selectedChat.isNew) {
             socket.emit("join chat", selectedChat.id);
         }
-    }, [selectedChat?.id, socket, currentUserId]);
+    }, [selectedChat?.id, socket, currentUserId, selectedChat?.isNew]);
 
-    // Listenerlarni useCallback bilan o'raymiz (Memory leak va keraksiz render oldini olish)
-    const handleNewMessage = useCallback((msg) => {
-        if (String(msg.chat_id) === String(selectedChat?.id)) {
+    // Socket orqali yangi xabar kelishi
+    const handleNewMessage = useCallback((msgData) => {
+        if (String(msgData.chat_id) === String(selectedChat?.id)) {
             setMessages(prev => {
-                // DUPLIKATGA QARSHI ASOSIY FILTER:
-                // Agar xabar ID si ro'yxatda bo'lsa, uni qo'shma
-                if (prev.some(m => String(m.id) === String(msg.id))) return prev;
-                return [...prev, msg];
+                if (prev.some(m => String(m.id) === String(msgData.id))) return prev;
+                return [...prev, msgData];
             });
 
-            if (String(msg.sender_id) !== currentUserId) {
+            if (String(msgData.sender_id) !== currentUserId) {
                 socket.emit("read messages", { chatId: selectedChat.id, userId: currentUserId });
             }
         }
@@ -77,8 +87,8 @@ const Messages = ({ selectedChat, setSelectedChat, onChatCreated }) => {
     useEffect(() => {
         if (!socket || !selectedChat?.id) return;
 
-        const handleUpdate = (u) => setMessages(p => p.map(m => m.id === u.id ? { ...m, text: u.text, is_edited: true } : m));
-        const handleDelete = ({ messageId }) => setMessages(p => p.filter(m => m.id !== messageId));
+        const handleUpdate = (u) => setMessages(p => p.map(m => String(m.id) === String(u.id) ? { ...m, text: u.text, is_edited: true } : m));
+        const handleDelete = ({ messageId }) => setMessages(p => p.filter(m => String(m.id) !== String(messageId)));
         const handleRead = ({ chatId }) => String(chatId) === String(selectedChat.id) && setMessages(p => p.map(m => ({ ...m, is_read: true })));
         const handleTyping = (id) => String(id) === String(selectedChat.id) && setIsPartnerTyping(true);
         const handleStopTyping = (id) => String(id) === String(selectedChat.id) && setIsPartnerTyping(false);
@@ -113,27 +123,27 @@ const Messages = ({ selectedChat, setSelectedChat, onChatCreated }) => {
                 setMessages(p => p.map(m => m.id === editingMessage.id ? { ...m, text, is_edited: true } : m));
                 setEditingMessage(null);
             } else {
-                let currentChat = { ...selectedChat };
+                let activeChatId = selectedChat.id;
 
-                if (currentChat.isNew) {
+                if (selectedChat.isNew) {
                     const partnerId = partner.id || partner._id;
                     const chatRes = await chatApi.createChat(partnerId);
-                    currentChat = chatRes.data;
-                    if (onChatCreated) onChatCreated(currentChat);
-                    setSelectedChat(currentChat);
-                    socket.emit("join chat", currentChat.id);
+                    const newChat = chatRes.data;
+                    activeChatId = newChat.id;
+                    setSelectedChat(newChat);
+                    if (onChatCreated) onChatCreated(newChat);
+                    socket.emit("join chat", activeChatId);
                 }
 
-                const res = await messageApi.sendMessage(currentChat.id, text);
+                const res = await messageApi.sendMessage(activeChatId, text);
+                const { message: sentMsg } = res.data;
 
-                // 1. UI ga qo'shamiz
                 setMessages(prev => {
-                    if (prev.some(m => String(m.id) === String(res.data.id))) return prev;
-                    return [...prev, res.data];
+                    if (prev.some(m => String(m.id) === String(sentMsg.id))) return prev;
+                    return [...prev, sentMsg];
                 });
 
-                // 2. Socket orqali yuboramiz
-                socket.emit("new message", { ...res.data, chatId: currentChat.id });
+                socket.emit("new message", { ...sentMsg, chatId: activeChatId });
             }
             setMessageText("");
             socket.emit("stop typing", selectedChat.id);
@@ -145,17 +155,16 @@ const Messages = ({ selectedChat, setSelectedChat, onChatCreated }) => {
     };
 
     const handleDeleteMessage = async (id) => {
-        if (!window.confirm("Xabarni o'chirmoqchimisiz?")) return;
+        if (!window.confirm("O'chirilsinmi?")) return;
         try {
             await messageApi.deleteMessage(id);
             socket.emit("delete message", { messageId: id, chatId: selectedChat.id });
             setMessages(p => p.filter(m => m.id !== id));
         } catch (err) {
-            toast.error("O'chirishda xatolik");
+            toast.error("Xatolik");
         }
     };
 
-    // UI qismi (o'zgarishsiz qoldi, faqat optimizatsiya qilindi)
     const groupedMessages = useMemo(() => {
         const groups = {};
         messages.forEach(msg => {
@@ -183,12 +192,12 @@ const Messages = ({ selectedChat, setSelectedChat, onChatCreated }) => {
                 <div className="flex items-center gap-4">
                     <div className="relative">
                         <div className="w-11 h-11 bg-emerald-500 rounded-2xl flex items-center justify-center text-black font-bold text-xl">
-                            {partner?.username?.[0]?.toUpperCase()}
+                            {partner?.username?.[0]?.toUpperCase() || "?"}
                         </div>
                         {isPartnerOnline && <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-emerald-500 border-4 border-[#0a0a0c] rounded-full" />}
                     </div>
                     <div>
-                        <h2 className="text-sm font-bold text-white">{partner?.username}</h2>
+                        <h2 className="text-sm font-bold text-white">{partner?.username || "Noma'lum foydalanuvchi"}</h2>
                         <p className={`text-[10px] ${isPartnerTyping ? "text-emerald-400" : "text-gray-500"}`}>
                             {isPartnerTyping ? "yozmoqda..." : (isPartnerOnline ? "online" : "offline")}
                         </p>
@@ -251,9 +260,11 @@ const Messages = ({ selectedChat, setSelectedChat, onChatCreated }) => {
                             value={messageText}
                             onChange={(e) => {
                                 setMessageText(e.target.value);
-                                socket?.emit("typing", selectedChat.id);
-                                if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
-                                typingTimeoutRef.current = setTimeout(() => socket?.emit("stop typing", selectedChat.id), 2000);
+                                if (!selectedChat.isNew) {
+                                    socket?.emit("typing", selectedChat.id);
+                                    if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+                                    typingTimeoutRef.current = setTimeout(() => socket?.emit("stop typing", selectedChat.id), 2000);
+                                }
                             }}
                             onKeyDown={(e) => {
                                 if (e.key === 'Enter' && !e.shiftKey) {

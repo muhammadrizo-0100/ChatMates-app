@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
-import { Search, Menu, Loader2, LogOut, MoreVertical, Trash2, UserPlus, Settings, BellOff } from "lucide-react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { Search, Menu, Loader2, LogOut, MoreVertical, Trash2, UserPlus, Settings } from "lucide-react";
 import { chatApi, userApi } from "../services/api";
 import { useAuth } from "../context/AuthContext";
 import { useSocket } from "../context/SocketContext";
@@ -18,16 +18,29 @@ const Sidebar = ({ onSelectChat, selectedChatId }) => {
     const [openMenuId, setOpenMenuId] = useState(null);
     const [chatToDelete, setChatToDelete] = useState(null);
 
-    const currentUserId = useMemo(() => String(user?.id || user?._id), [user]);
+    const selectedChatRef = useRef(selectedChatId);
+    const currentUserId = useMemo(() => String(user?.id || user?._id || ""), [user]);
 
+    // Partnerni aniqlash funksiyasi (Mustahkamlandi)
     const getPartner = useCallback((chat) => {
         if (!chat) return null;
         return String(chat.user1_id) === currentUserId ? chat.user2 : chat.user1;
     }, [currentUserId]);
 
+    // Chat tanlanganda unread_count ni nolga tushirish
+    useEffect(() => {
+        selectedChatRef.current = selectedChatId;
+        if (selectedChatId) {
+            setChats(prev => prev.map(c =>
+                String(c.id) === String(selectedChatId)
+                    ? { ...c, unread_count: 0 }
+                    : c
+            ));
+        }
+    }, [selectedChatId]);
+
     const fetchChats = useCallback(async () => {
         try {
-            setIsLoading(true);
             const response = await chatApi.getMyChats();
             const sortedChats = (response.data || []).sort((a, b) =>
                 new Date(b.updatedAt) - new Date(a.updatedAt)
@@ -35,14 +48,16 @@ const Sidebar = ({ onSelectChat, selectedChatId }) => {
             setChats(sortedChats);
         } catch (err) {
             console.error("Error loading chats:", err);
-            toast.error("Failed to load conversations");
         } finally {
             setIsLoading(false);
         }
     }, []);
 
-    useEffect(() => { fetchChats(); }, [fetchChats]);
+    useEffect(() => {
+        fetchChats();
+    }, [fetchChats]);
 
+    // Socket va Event Listeners
     useEffect(() => {
         if (!socket) return;
 
@@ -52,50 +67,68 @@ const Sidebar = ({ onSelectChat, selectedChatId }) => {
 
                 if (chatIndex !== -1) {
                     const updatedChats = [...prev];
-                    const isNotActive = String(selectedChatId) !== String(msg.chat_id);
+                    const isNotActive = String(selectedChatRef.current) !== String(msg.chat_id);
 
                     updatedChats[chatIndex] = {
                         ...updatedChats[chatIndex],
                         last_message: msg.text,
                         updatedAt: new Date().toISOString(),
                         unread_count: isNotActive
-                            ? (updatedChats[chatIndex].unread_count || 0) + 1
+                            ? (Number(updatedChats[chatIndex].unread_count) || 0) + 1
                             : 0
                     };
-                    return updatedChats.sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
+
+                    return [...updatedChats].sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
                 } else {
-                    fetchChats();
+                    // Yangi chat bo'lsa ro'yxatni yangilash
+                    setTimeout(() => fetchChats(), 100);
                     return prev;
                 }
             });
         };
 
-        socket.on("message received", handleNewMessage);
-        return () => socket.off("message received", handleNewMessage);
-    }, [socket, fetchChats, selectedChatId]);
+        const handleChatDeleted = (deletedChatId) => {
+            setChats(prev => prev.filter(c => String(c.id) !== String(deletedChatId)));
+            if (String(selectedChatRef.current) === String(deletedChatId)) {
+                onSelectChat(null);
+            }
+        };
 
+        socket.on("message received", handleNewMessage);
+        socket.on("chat deleted", handleChatDeleted);
+
+        return () => {
+            socket.off("message received", handleNewMessage);
+            socket.off("chat deleted", handleChatDeleted);
+        };
+    }, [socket, fetchChats, onSelectChat]);
+
+    // SEARCH LOGIC (Debounce bilan)
     useEffect(() => {
+        if (!searchQuery.trim() || searchQuery.length < 2) {
+            setSearchResults([]);
+            return;
+        }
+
         const delayDebounceFn = setTimeout(async () => {
-            const trimmedQuery = searchQuery.trim();
-            if (trimmedQuery.length > 1) {
-                setIsSearching(true);
-                try {
-                    const res = await userApi.search(trimmedQuery);
-                    setSearchResults((res.data || []).filter(u => String(u.id || u._id) !== currentUserId));
-                } catch (err) {
-                    setSearchResults([]);
-                } finally {
-                    setIsSearching(false);
-                }
-            } else {
+            setIsSearching(true);
+            try {
+                const res = await userApi.search(searchQuery.trim());
+                setSearchResults((res.data || []).filter(u => String(u.id || u._id) !== currentUserId));
+            } catch (err) {
                 setSearchResults([]);
+            } finally {
+                setIsSearching(false);
             }
         }, 500);
+
         return () => clearTimeout(delayDebounceFn);
     }, [searchQuery, currentUserId]);
 
     const handleSearchSelect = (selectedUser) => {
         const partnerId = String(selectedUser.id || selectedUser._id);
+
+        // Mavjud chatni qidirish
         const existingChat = chats.find(chat => {
             const p = getPartner(chat);
             return String(p?.id || p?._id) === partnerId;
@@ -104,8 +137,10 @@ const Sidebar = ({ onSelectChat, selectedChatId }) => {
         if (existingChat) {
             onSelectChat(existingChat);
         } else {
+            // Yangi vaqtinchalik chat yaratish
             onSelectChat({
-                id: `temp-${partnerId}`,
+                id: null,
+                tempId: `temp-${partnerId}`,
                 isNew: true,
                 user1: user,
                 user2: selectedUser,
@@ -121,7 +156,7 @@ const Sidebar = ({ onSelectChat, selectedChatId }) => {
         if (!chatToDelete) return;
         try {
             await chatApi.deleteChat(chatToDelete);
-            setChats(prev => prev.filter(c => c.id !== chatToDelete));
+            setChats(prev => prev.filter(c => String(c.id) !== String(chatToDelete)));
             if (String(selectedChatId) === String(chatToDelete)) onSelectChat(null);
             toast.success("Chat deleted");
         } catch (err) {
@@ -137,7 +172,6 @@ const Sidebar = ({ onSelectChat, selectedChatId }) => {
         const date = new Date(dateStr);
         const now = new Date();
         const diffInDays = Math.floor((now - date) / (1000 * 60 * 60 * 24));
-
         if (diffInDays === 0) return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
         if (diffInDays === 1) return "Yesterday";
         if (diffInDays < 7) return date.toLocaleDateString([], { weekday: 'short' });
@@ -146,9 +180,10 @@ const Sidebar = ({ onSelectChat, selectedChatId }) => {
 
     return (
         <div className="w-80 border-r border-white/5 flex flex-col bg-[#0a0a0c] h-full overflow-hidden select-none relative">
-
+            {/* Overlay for closing menu */}
             {openMenuId && <div className="fixed inset-0 z-40" onClick={() => setOpenMenuId(null)} />}
 
+            {/* Sidebar Menu */}
             <AnimatePresence>
                 {showMenu && (
                     <>
@@ -158,29 +193,37 @@ const Sidebar = ({ onSelectChat, selectedChatId }) => {
                                 <p className="text-gray-500">Profile</p>
                                 <p className="text-white font-bold truncate">{user?.username || user?.email}</p>
                             </div>
-                            <button className="w-full flex items-center gap-3 p-3 text-gray-400 hover:bg-white/5 rounded-xl text-sm transition-colors"><Settings size={18} /> Settings</button>
-                            <button onClick={logout} className="w-full flex items-center gap-3 p-3 text-red-400 hover:bg-red-400/10 rounded-xl text-sm font-medium transition-colors"><LogOut size={18} /> Logout</button>
+                            <button className="w-full flex items-center gap-3 p-3 text-gray-400 hover:bg-white/5 rounded-xl text-sm transition-colors">
+                                <Settings size={18} /> Settings
+                            </button>
+                            <button onClick={logout} className="w-full flex items-center gap-3 p-3 text-red-400 hover:bg-red-400/10 rounded-xl text-sm font-medium transition-colors">
+                                <LogOut size={18} /> Logout
+                            </button>
                         </motion.div>
                     </>
                 )}
             </AnimatePresence>
 
+            {/* Delete Confirmation Modal */}
             <AnimatePresence>
                 {chatToDelete && (
                     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
                         <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="bg-[#16161a] border border-white/10 p-6 rounded-3xl max-w-sm w-full text-center">
-                            <div className="w-12 h-12 bg-red-500/10 text-red-500 rounded-full flex items-center justify-center mx-auto mb-4"><Trash2 size={24} /></div>
+                            <div className="w-12 h-12 bg-red-500/10 text-red-500 rounded-full flex items-center justify-center mx-auto mb-4">
+                                <Trash2 size={24} />
+                            </div>
                             <h3 className="text-lg font-bold text-white mb-2">Delete Chat?</h3>
-                            <p className="text-gray-400 text-xs mb-6">All messages will be permanently removed. This action cannot be undone.</p>
+                            <p className="text-gray-400 text-xs mb-6">All messages will be permanently removed.</p>
                             <div className="flex gap-3">
-                                <button onClick={() => setChatToDelete(null)} className="flex-1 py-3 rounded-xl bg-white/5 text-white text-sm hover:bg-white/10 transition-colors">Cancel</button>
-                                <button onClick={confirmDelete} className="flex-1 py-3 rounded-xl bg-red-500 text-white text-sm font-bold hover:bg-red-600 transition-colors">Delete</button>
+                                <button onClick={() => setChatToDelete(null)} className="flex-1 py-3 rounded-xl bg-white/5 text-white text-sm hover:bg-white/10">Cancel</button>
+                                <button onClick={confirmDelete} className="flex-1 py-3 rounded-xl bg-red-500 text-white text-sm font-bold hover:bg-red-600">Delete</button>
                             </div>
                         </motion.div>
                     </div>
                 )}
             </AnimatePresence>
 
+            {/* Header */}
             <div className="p-4 space-y-4">
                 <div className="flex items-center justify-between">
                     <button onClick={() => setShowMenu(!showMenu)} className="p-2 hover:bg-white/5 rounded-xl transition-colors text-gray-400">
@@ -197,12 +240,13 @@ const Sidebar = ({ onSelectChat, selectedChatId }) => {
                     <input
                         type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)}
                         placeholder="Search users..."
-                        className="w-full bg-white/5 border border-white/10 rounded-2xl py-3 pl-12 pr-4 text-sm text-white focus:border-emerald-500/50 outline-none transition-all placeholder:text-gray-600"
+                        className="w-full bg-white/5 border border-white/10 rounded-2xl py-3 pl-12 pr-4 text-sm text-white focus:border-emerald-500/50 outline-none transition-all"
                     />
                     {isSearching && <Loader2 className="absolute right-4 top-1/2 -translate-y-1/2 animate-spin text-emerald-500" size={16} />}
                 </div>
             </div>
 
+            {/* Main Content */}
             <div className="flex-1 overflow-y-auto px-3 space-y-1 custom-scrollbar">
                 <AnimatePresence mode="wait">
                     {searchQuery.length > 0 ? (
@@ -228,13 +272,13 @@ const Sidebar = ({ onSelectChat, selectedChatId }) => {
                             ) : chats.length === 0 ? (
                                 <div className="text-center py-20">
                                     <p className="text-xs text-gray-600">No conversations yet</p>
-                                    <p className="text-[10px] text-gray-700 mt-1">Search for friends to start chatting</p>
                                 </div>
                             ) : (
                                 chats.map(chat => {
                                     const partner = getPartner(chat);
+                                    const partnerId = partner?.id || partner?._id;
                                     const isActive = String(selectedChatId) === String(chat.id);
-                                    const isOnline = onlineUsers.some(u => String(u) === String(partner?.id || partner?._id));
+                                    const isOnline = partnerId ? onlineUsers.some(u => String(u) === String(partnerId)) : false;
 
                                     return (
                                         <div key={chat.id} onClick={() => onSelectChat(chat)}
@@ -252,7 +296,7 @@ const Sidebar = ({ onSelectChat, selectedChatId }) => {
                                             <div className="flex-1 min-w-0">
                                                 <div className="flex justify-between items-center mb-0.5">
                                                     <h3 className={`text-sm font-bold truncate ${isActive ? 'text-black' : 'text-white'}`}>
-                                                        {partner?.username || "Unknown"}
+                                                        {partner?.username || "Unknown Foydalanuvchi"}
                                                     </h3>
                                                     <span className={`text-[10px] ${isActive ? 'text-black/60' : 'text-gray-500'}`}>
                                                         {formatChatTime(chat.updatedAt)}
@@ -276,52 +320,18 @@ const Sidebar = ({ onSelectChat, selectedChatId }) => {
                                                         e.stopPropagation();
                                                         setOpenMenuId(openMenuId === chat.id ? null : chat.id);
                                                     }}
-                                                    className={`p-1 rounded-lg transition-all z-10 relative 
-                                                        ${isActive ? 'hover:bg-black/10' : 'hover:bg-white/10'} 
-                                                        ${openMenuId === chat.id ? 'opacity-100' : 'opacity-30 group-hover:opacity-100'}
-                                                    `}
+                                                    className={`p-1 rounded-lg transition-all ${isActive ? 'hover:bg-black/10' : 'hover:bg-white/10'} ${openMenuId === chat.id ? 'opacity-100' : 'opacity-30 group-hover:opacity-100'}`}
                                                 >
                                                     <MoreVertical size={16} />
                                                 </button>
 
                                                 <AnimatePresence>
                                                     {openMenuId === chat.id && (
-                                                        <>
-                                                            <div
-                                                                className="fixed inset-0 z-[45]"
-                                                                onClick={(e) => {
-                                                                    e.stopPropagation();
-                                                                    setOpenMenuId(null);
-                                                                }}
-                                                            />
-
-                                                            <motion.div
-                                                                onClick={(e) => e.stopPropagation()}
-                                                                initial={{ opacity: 0, scale: 0.95, y: -10 }}
-                                                                animate={{ opacity: 1, scale: 1, y: 0 }}
-                                                                exit={{ opacity: 0, scale: 0.95, y: -10 }}
-                                                                className="absolute right-0 top-10 w-40 bg-[#1b1b21] border border-white/10 rounded-xl shadow-2xl z-[50] overflow-hidden"
-                                                            >
-                                                                <button
-                                                                    onClick={(e) => {
-                                                                        e.stopPropagation();
-                                                                        setChatToDelete(chat.id);
-                                                                    }}
-                                                                    className="w-full flex items-center gap-2 px-4 py-3 text-xs text-red-500 hover:bg-red-500/10 transition-colors"
-                                                                >
-                                                                    <Trash2 size={14} /> Delete Chat
-                                                                </button>
-                                                                <button
-                                                                    onClick={(e) => {
-                                                                        e.stopPropagation();
-                                                                        setOpenMenuId(null);
-                                                                    }}
-                                                                    className="w-full flex items-center gap-2 px-4 py-2 text-[10px] text-gray-500 hover:bg-white/5 border-t border-white/5 transition-colors"
-                                                                >
-                                                                    Close
-                                                                </button>
-                                                            </motion.div>
-                                                        </>
+                                                        <motion.div initial={{ opacity: 0, scale: 0.95, y: -10 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95, y: -10 }} className="absolute right-0 top-10 w-40 bg-[#1b1b21] border border-white/10 rounded-xl shadow-2xl z-[50] overflow-hidden">
+                                                            <button onClick={(e) => { e.stopPropagation(); setChatToDelete(chat.id); }} className="w-full flex items-center gap-2 px-4 py-3 text-xs text-red-500 hover:bg-red-500/10">
+                                                                <Trash2 size={14} /> Delete Chat
+                                                            </button>
+                                                        </motion.div>
                                                     )}
                                                 </AnimatePresence>
                                             </div>

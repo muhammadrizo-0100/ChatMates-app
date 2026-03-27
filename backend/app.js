@@ -15,14 +15,14 @@ dotenv.config();
 const app = express();
 const server = http.createServer(app);
 
-// 1. CORS manzillarini aniqlash (Render va Vercel uchun)
+// 1. CORS manzillari
 const allowedOrigins = [
     process.env.FRONTEND_URL,
     "http://localhost:5173",
-    "https://chat-mates-app.vercel.app" // O'zingizning aniq vercel manzilingizni qo'shing
+    "https://chat-mates-app.vercel.app"
 ];
 
-// 2. Socket.io CORS sozlamalari
+// 2. Socket.io sozlamalari
 const io = new Server(server, {
     pingTimeout: 60000,
     cors: {
@@ -49,10 +49,10 @@ app.use("/api", messageRoute);
 if (setupSwagger) setupSwagger(app);
 
 // ---------------- SOCKET.IO LOGIKASI ----------------
-let onlineUsers = new Map(); 
+let onlineUsers = new Map();
 
 io.on("connection", (socket) => {
-    console.log("🟢 Yangi ulanish:", socket.id);
+    console.log("🟢 New connection:", socket.id);
 
     // 1. SETUP & ONLINE STATUS
     socket.on("setup", (userData) => {
@@ -60,7 +60,7 @@ io.on("connection", (socket) => {
             const userIdString = String(userData.id);
             socket.join(userIdString);
             onlineUsers.set(userIdString, socket.id);
-            console.log(`👤 Foydalanuvchi ${userIdString} onlayn.`);
+            console.log(`👤 User ${userIdString} is online.`);
 
             io.emit("get-online-users", Array.from(onlineUsers.keys()));
             socket.emit("connected");
@@ -71,16 +71,43 @@ io.on("connection", (socket) => {
     socket.on("join chat", (room) => {
         if (room) {
             socket.join(String(room));
-            console.log(`💬 Xonaga kirdi: ${room}`);
+            console.log(`💬 Joined room: ${room}`);
+        }
+    });
+
+    // --- YANGI QO'SHILDI: CHAT YARATILGANDA ---
+    socket.on("new chat", (data) => {
+        const { receiverId, chat } = data;
+        if (receiverId) {
+            socket.to(String(receiverId)).emit("new chat created", chat);
+        }
+    });
+
+    // --- YANGI QO'SHILDI: CHAT O'CHIRILGANDA ---
+    socket.on("delete chat", (data) => {
+        const { chatId, partnerId } = data;
+        if (partnerId) {
+            socket.to(String(partnerId)).emit("chat deleted", chatId);
         }
     });
 
     // 3. NEW MESSAGE
     socket.on("new message", (newMessage) => {
+        // Xabar obyektidan chat_id va qabul qiluvchi (receiver) ID sini olamiz
         const chatId = String(newMessage.chat_id || newMessage.chatId);
+
+        // Partnerning ID sini aniqlash (frontenddan yuborilayotgan obyektda bo'lishi kerak)
+        const receiverId = newMessage.receiverId || (newMessage.chat && newMessage.chat.receiverId);
+
         if (!chatId) return;
-        // Xabarni xonadagi boshqalarga yuborish
+
+        // 1. Chat xonasiga yuborish (o'sha paytda chatni ichida o'tirganlar uchun)
         socket.to(chatId).emit("message received", newMessage);
+
+        // 2. Yangilanish: Partnerning shaxsiy xonasiga yuborish (Sidebar yangilanishi uchun)
+        if (receiverId) {
+            socket.to(String(receiverId)).emit("message received", newMessage);
+        }
     });
 
     // 4. READ STATUS
@@ -95,7 +122,7 @@ io.on("connection", (socket) => {
     socket.on("delete message", (data) => {
         const { messageId, chatId } = data;
         if (chatId) {
-            socket.to(String(chatId)).emit("message deleted", { messageId });
+            socket.to(String(chatId)).emit("message deleted", { messageId, chatId });
         }
     });
 
@@ -124,13 +151,12 @@ io.on("connection", (socket) => {
         if (disconnectedUserId) {
             onlineUsers.delete(disconnectedUserId);
             try {
-                // Ma'lumotlar bazasini yangilash (asinxron)
                 await User.update(
                     { lastSeen: new Date() },
                     { where: { id: disconnectedUserId } }
                 );
                 io.emit("get-online-users", Array.from(onlineUsers.keys()));
-                console.log(`🔴 Foydalanuvchi ${disconnectedUserId} oflayn.`);
+                console.log(`🔴 User ${disconnectedUserId} is offline.`);
             } catch (err) {
                 console.error("Disconnect error:", err.message);
             }
@@ -140,17 +166,16 @@ io.on("connection", (socket) => {
 
 const PORT = process.env.PORT || 5000;
 
-// Ma'lumotlar bazasi bilan sinxronizatsiya va serverni ishga tushirish
 sequelize.authenticate()
     .then(() => {
-        console.log('✅ Ma\'lumotlar bazasiga ulanish muvaffaqiyatli.');
+        console.log('✅ Database connected successfully.');
         return sequelize.sync({ alter: false });
     })
     .then(() => {
         server.listen(PORT, () => {
-            console.log(`✅ Server portda ishlamoqda: ${PORT}`);
+            console.log(`✅ Server is running on port: ${PORT}`);
         });
     })
     .catch(err => {
-        console.error('❌ MB ulanishda xato:', err);
+        console.error('❌ Database connection error:', err);
     });

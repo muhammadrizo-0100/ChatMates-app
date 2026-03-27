@@ -5,7 +5,7 @@ exports.validateMessage = (data) => {
     const schema = Joi.object({
         chat_id: Joi.number()
             .integer()
-            .required()
+            .optional()
             .messages({
                 "number.base": "Chat ID raqam bo'lishi kerak",
                 "any.required": "Chat ID (chat_id) kiritilishi shart",
