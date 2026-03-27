@@ -1,10 +1,11 @@
 const { Sequelize } = require('sequelize');
 require('dotenv').config();
 
+// Sequelize obyektini sozlash
 const sequelize = process.env.DATABASE_URL
     ? new Sequelize(process.env.DATABASE_URL, {
         dialect: 'postgres',
-        logging: false,
+        logging: false, // Konsolda SQL so'rovlarni ko'rsatmaslik uchun
         dialectOptions: {
             ssl: {
                 require: true,
@@ -23,18 +24,26 @@ const sequelize = process.env.DATABASE_URL
         }
     );
 
+/**
+ * Ma'lumotlar bazasiga ulanish va sinxronizatsiya qilish
+ */
 const connectDB = async () => {
     try {
+        // Ulanishni tekshirish
         await sequelize.authenticate();
         console.log('✅ PostgreSQL ma\'lumotlar bazasiga muvaffaqiyatli ulandingiz.');
 
-        // ⚠️ DIQQAT: force: true bazani drop qilib, noldan ochadi. 
-        // Hamma eski ma'lumotlar o'chib ketadi!
-        await sequelize.sync({ force: true }); 
+        /**
+         * ⚠️ MUHIM: { alter: true } rejimi ma'lumotlarni o'chirmaydi.
+         * Agar force: true qolsa, har restartda baza tozalanib ketardi.
+         * Endi xavfsiz rejimdamiz.
+         */
+        await sequelize.sync({ alter: true });
         
-        console.log('🚀 Baza TOZALANDI va modellar qayta yaratildi.');
+        console.log('🚀 Ma\'lumotlar bazasi modellari sinxronlashtirildi.');
     } catch (error) {
         console.error('❌ Bazaga ulanishda xatolik yuz berdi:', error.message);
+        // Xatolik bo'lsa dasturni to'xtatish
         process.exit(1);
     }
 };
