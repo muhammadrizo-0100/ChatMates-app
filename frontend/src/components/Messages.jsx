@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from "react";
-import { Send, Edit2, Trash2, X, Check, CheckCheck, Loader2, MoreVertical } from "lucide-react";
+// ChevronLeft ikonkasini import qildik
+import { Send, Edit2, Trash2, X, Check, CheckCheck, Loader2, MoreVertical, ChevronLeft } from "lucide-react";
 import { messageApi, chatApi } from "../services/api";
 import { useAuth } from "../context/AuthContext";
 import { useSocket } from "../context/SocketContext";
@@ -19,32 +20,23 @@ const Messages = ({ selectedChat, setSelectedChat, onChatCreated }) => {
     const scrollRef = useRef();
     const typingTimeoutRef = useRef(null);
 
-    // ID larni har doim String-ga o'girib solishtirish xavfsiz
     const currentUserId = useMemo(() => String(user?.id || user?._id || ""), [user]);
 
     const partner = useMemo(() => {
         if (!selectedChat) return null;
-
-        // 1. Agar qidiruvdan kelgan yangi chat bo'lsa
         if (selectedChat.isNew) return selectedChat.user2 || selectedChat.User2;
-
-        // 2. Mavjud chat ichidan sherikni qidirish
         const u1_id = String(selectedChat.user1_id || selectedChat.User1?.id || selectedChat.user1?.id || "");
-
         const u1 = selectedChat.user1 || selectedChat.User1;
         const u2 = selectedChat.user2 || selectedChat.User2;
-
         return u1_id === currentUserId ? u2 : u1;
     }, [selectedChat, currentUserId]);
 
-    // --- TUZATISH: Online holatini tekshirish ---
     const isPartnerOnline = useMemo(() => {
         const partnerId = partner?.id || partner?._id;
         if (!partnerId || !onlineUsers) return false;
         return onlineUsers.some(u => String(u) === String(partnerId));
     }, [partner, onlineUsers]);
 
-    // Xabarlarni yuklash
     useEffect(() => {
         const fetchMessages = async () => {
             if (!selectedChat?.id || selectedChat.isNew) {
@@ -70,7 +62,6 @@ const Messages = ({ selectedChat, setSelectedChat, onChatCreated }) => {
         }
     }, [selectedChat?.id, socket, currentUserId, selectedChat?.isNew]);
 
-    // Socket orqali yangi xabar kelishi
     const handleNewMessage = useCallback((msgData) => {
         if (String(msgData.chat_id) === String(selectedChat?.id)) {
             setMessages(prev => {
@@ -190,6 +181,14 @@ const Messages = ({ selectedChat, setSelectedChat, onChatCreated }) => {
         <div className="flex flex-col h-full bg-[#0a0a0c] relative">
             <header className="px-6 py-4 border-b border-white/5 bg-[#0a0a0c]/80 backdrop-blur-md sticky top-0 z-30 flex items-center justify-between">
                 <div className="flex items-center gap-4">
+                    {/* BACK TUGMASI: Faqat 750px (md:hidden) dan pastda chiqadi */}
+                    <button
+                        onClick={() => setSelectedChat(null)}
+                        className="md:hidden p-2 -ml-2 hover:bg-white/5 rounded-full text-gray-400 transition-colors"
+                    >
+                        <ChevronLeft size={24} />
+                    </button>
+
                     <div className="relative">
                         <div className="w-11 h-11 bg-emerald-500 rounded-2xl flex items-center justify-center text-black font-bold text-xl">
                             {partner?.username?.[0]?.toUpperCase() || "?"}

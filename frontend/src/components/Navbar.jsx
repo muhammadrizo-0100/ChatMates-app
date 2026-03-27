@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { Link, useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
-import { MessageSquare, Menu, X, LogOut, LayoutDashboard, User, ChevronDown } from "lucide-react";
+import { MessageSquare, Menu, X, LogOut, LayoutDashboard, User, ChevronDown, LogIn, UserPlus } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
 const Navbar = () => {
@@ -12,7 +12,9 @@ const Navbar = () => {
     const location = useLocation();
     const profileRef = useRef(null);
 
-    // Profil tashqarisiga bosilganda menyuni yopish
+    // Link bosilganda menyuni yopish (Mobilda muhim)
+    const closeMenu = () => setIsMenuOpen(false);
+
     useEffect(() => {
         const handleClickOutside = (event) => {
             if (profileRef.current && !profileRef.current.contains(event.target)) {
@@ -26,6 +28,7 @@ const Navbar = () => {
     const handleLogout = () => {
         logout();
         setIsProfileOpen(false);
+        closeMenu();
         navigate("/");
     };
 
@@ -35,24 +38,23 @@ const Navbar = () => {
 
     return (
         <nav className="sticky top-0 z-[100] w-full border-b border-white/5 bg-[#0a0a0c]/80 backdrop-blur-xl">
-            <div className="flex items-center justify-between px-6 md:px-10 py-4 max-w-7xl mx-auto">
+            <div className="flex items-center justify-between px-4 sm:px-6 md:px-10 py-4 max-w-7xl mx-auto">
 
                 {/* Logo */}
-                <Link to="/" className="flex items-center gap-2 group cursor-pointer">
+                <Link to="/" onClick={closeMenu} className="flex items-center gap-2 group cursor-pointer shrink-0">
                     <motion.div
                         whileHover={{ rotate: -10, scale: 1.1 }}
-                        className="w-10 h-10 bg-emerald-500 rounded-xl flex items-center justify-center shadow-[0_0_20px_rgba(16,185,129,0.3)]"
+                        className="w-9 h-9 sm:w-10 sm:h-10 bg-emerald-500 rounded-xl flex items-center justify-center shadow-[0_0_20px_rgba(16,185,129,0.3)]"
                     >
-                        <MessageSquare className="text-black" size={22} fill="currentColor" />
+                        <MessageSquare className="text-black" size={20} fill="currentColor" />
                     </motion.div>
-                    <span className="text-2xl font-bold tracking-tighter text-white">ChatMates</span>
+                    <span className="text-xl sm:text-2xl font-bold tracking-tighter text-white">ChatMates</span>
                 </Link>
 
                 {/* Desktop Menu */}
                 <div className="hidden md:flex items-center gap-6">
                     {user ? (
                         <div className="flex items-center gap-6">
-                            {/* Dashboard Button */}
                             <Link to="/dashboard">
                                 <motion.button
                                     whileHover={{ scale: 1.05 }}
@@ -67,22 +69,17 @@ const Navbar = () => {
                                 </motion.button>
                             </Link>
 
-                            {/* User Profile Trigger */}
                             <div className="relative" ref={profileRef}>
                                 <motion.button
                                     onClick={() => setIsProfileOpen(!isProfileOpen)}
-                                    whileHover={{ scale: 1.02 }}
                                     className={`flex items-center gap-3 pl-1 pr-3 py-1 rounded-full border transition-all
                                     ${isProfileOpen ? 'border-emerald-500/50 bg-emerald-500/5' : 'border-white/10 bg-white/5 hover:border-white/20'}`}
                                 >
-                                    {/* Avatar Circle */}
-                                    <div className="w-9 h-9 rounded-full bg-gradient-to-tr from-emerald-500 to-teal-400 flex items-center justify-center text-black font-black text-sm shadow-inner">
+                                    <div className="w-9 h-9 rounded-full bg-gradient-to-tr from-emerald-500 to-teal-400 flex items-center justify-center text-black font-black text-sm">
                                         {getInitial()}
                                     </div>
-                                    <span className="text-sm font-medium text-gray-200 hidden lg:block">
-                                        {user.username || "Account"}
-                                    </span>
-                                    <ChevronDown size={16} className={`text-gray-500 transition-transform duration-300 ${isProfileOpen ? 'rotate-180' : ''}`} />
+                                    <span className="text-sm font-medium text-gray-200 hidden lg:block">{user.username || "Account"}</span>
+                                    <ChevronDown size={16} className={`text-gray-500 transition-transform ${isProfileOpen ? 'rotate-180' : ''}`} />
                                 </motion.button>
 
                                 <AnimatePresence>
@@ -91,34 +88,15 @@ const Navbar = () => {
                                             initial={{ opacity: 0, y: 15, scale: 0.95 }}
                                             animate={{ opacity: 1, y: 0, scale: 1 }}
                                             exit={{ opacity: 0, y: 15, scale: 0.95 }}
-                                            className="absolute right-0 mt-3 w-64 bg-[#111113] border border-white/10 rounded-2xl overflow-hidden shadow-[0_20px_50px_rgba(0,0,0,0.6)] z-50"
+                                            className="absolute right-0 mt-3 w-64 bg-[#111113] border border-white/10 rounded-2xl overflow-hidden shadow-2xl z-50"
                                         >
-                                            <div className="px-5 py-5 border-b border-white/5 bg-gradient-to-b from-white/[0.04] to-transparent">
-                                                <div className="flex items-center gap-3 mb-3">
-                                                    <div className="w-12 h-12 rounded-full bg-emerald-500 flex items-center justify-center text-black font-black text-xl">
-                                                        {getInitial()}
-                                                    </div>
-                                                    <div className="overflow-hidden">
-                                                        <p className="text-sm font-bold text-white truncate">{user.username || "User"}</p>
-                                                        <p className="text-[11px] text-gray-500 truncate">{user.email}</p>
-                                                    </div>
-                                                </div>
-                                                <div className="px-2 py-1 bg-emerald-500/10 border border-emerald-500/20 rounded-lg text-center">
-                                                    <span className="text-[10px] uppercase tracking-widest font-black text-emerald-500">Pro Member</span>
-                                                </div>
+                                            <div className="p-4 border-b border-white/5">
+                                                <p className="text-sm font-bold text-white">{user.username}</p>
+                                                <p className="text-[11px] text-gray-500 truncate">{user.email}</p>
                                             </div>
-
                                             <div className="p-2">
-                                                <button className="w-full flex items-center gap-3 px-3 py-3 text-sm text-gray-400 hover:text-white hover:bg-white/5 rounded-xl transition-all">
-                                                    <User size={18} />
-                                                    My Profile
-                                                </button>
-                                                <button
-                                                    onClick={handleLogout}
-                                                    className="w-full flex items-center gap-3 px-3 py-3 text-sm text-red-400 hover:bg-red-500/10 rounded-xl transition-all font-medium"
-                                                >
-                                                    <LogOut size={18} />
-                                                    Sign Out
+                                                <button onClick={handleLogout} className="w-full flex items-center gap-3 px-3 py-3 text-sm text-red-400 hover:bg-red-500/10 rounded-xl transition-all">
+                                                    <LogOut size={18} /> Sign Out
                                                 </button>
                                             </div>
                                         </motion.div>
@@ -134,11 +112,54 @@ const Navbar = () => {
                     )}
                 </div>
 
-                {/* Mobile Burger */}
+                {/* Burger Button */}
                 <button className="md:hidden p-2 text-gray-400 hover:text-white transition" onClick={() => setIsMenuOpen(!isMenuOpen)}>
-                    {isMenuOpen ? <X size={28} /> : <Menu size={28} />}
+                    {isMenuOpen ? <X size={26} /> : <Menu size={26} />}
                 </button>
             </div>
+
+            {/* --- MOBILE MENU (Sizda yo'q bo'lgan qism) --- */}
+            <AnimatePresence>
+                {isMenuOpen && (
+                    <motion.div
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: "auto" }}
+                        exit={{ opacity: 0, height: 0 }}
+                        className="md:hidden border-t border-white/5 bg-[#0d0d0f] overflow-hidden"
+                    >
+                        <div className="p-4 flex flex-col gap-2">
+                            {user ? (
+                                <>
+                                    <div className="flex items-center gap-3 p-3 bg-white/5 rounded-2xl mb-2">
+                                        <div className="w-10 h-10 rounded-full bg-emerald-500 flex items-center justify-center text-black font-bold">
+                                            {getInitial()}
+                                        </div>
+                                        <div>
+                                            <p className="text-sm font-bold text-white">{user.username}</p>
+                                            <p className="text-xs text-gray-500">{user.email}</p>
+                                        </div>
+                                    </div>
+                                    <Link to="/dashboard" onClick={closeMenu} className="flex items-center gap-3 p-4 text-gray-300 hover:bg-white/5 rounded-xl transition">
+                                        <LayoutDashboard size={20} className="text-emerald-500" /> Dashboard
+                                    </Link>
+                                    <button onClick={handleLogout} className="flex items-center gap-3 p-4 text-red-400 hover:bg-red-500/10 rounded-xl transition">
+                                        <LogOut size={20} /> Sign Out
+                                    </button>
+                                </>
+                            ) : (
+                                <>
+                                    <Link to="/login" onClick={closeMenu} className="flex items-center gap-3 p-4 text-gray-300 hover:bg-white/5 rounded-xl transition">
+                                        <LogIn size={20} /> Log In
+                                    </Link>
+                                    <Link to="/register" onClick={closeMenu} className="flex items-center gap-3 p-4 bg-emerald-500 text-black font-bold rounded-xl transition">
+                                        <UserPlus size={20} /> Sign Up
+                                    </Link>
+                                </>
+                            )}
+                        </div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
         </nav>
     );
 };

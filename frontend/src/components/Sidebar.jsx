@@ -21,13 +21,11 @@ const Sidebar = ({ onSelectChat, selectedChatId }) => {
     const selectedChatRef = useRef(selectedChatId);
     const currentUserId = useMemo(() => String(user?.id || user?._id || ""), [user]);
 
-    // Partnerni aniqlash funksiyasi (Mustahkamlandi)
     const getPartner = useCallback((chat) => {
         if (!chat) return null;
         return String(chat.user1_id) === currentUserId ? chat.user2 : chat.user1;
     }, [currentUserId]);
 
-    // Chat tanlanganda unread_count ni nolga tushirish
     useEffect(() => {
         selectedChatRef.current = selectedChatId;
         if (selectedChatId) {
@@ -57,7 +55,6 @@ const Sidebar = ({ onSelectChat, selectedChatId }) => {
         fetchChats();
     }, [fetchChats]);
 
-    // Socket va Event Listeners
     useEffect(() => {
         if (!socket) return;
 
@@ -80,7 +77,6 @@ const Sidebar = ({ onSelectChat, selectedChatId }) => {
 
                     return [...updatedChats].sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
                 } else {
-                    // Yangi chat bo'lsa ro'yxatni yangilash
                     setTimeout(() => fetchChats(), 100);
                     return prev;
                 }
@@ -103,7 +99,6 @@ const Sidebar = ({ onSelectChat, selectedChatId }) => {
         };
     }, [socket, fetchChats, onSelectChat]);
 
-    // SEARCH LOGIC (Debounce bilan)
     useEffect(() => {
         if (!searchQuery.trim() || searchQuery.length < 2) {
             setSearchResults([]);
@@ -127,8 +122,6 @@ const Sidebar = ({ onSelectChat, selectedChatId }) => {
 
     const handleSearchSelect = (selectedUser) => {
         const partnerId = String(selectedUser.id || selectedUser._id);
-
-        // Mavjud chatni qidirish
         const existingChat = chats.find(chat => {
             const p = getPartner(chat);
             return String(p?.id || p?._id) === partnerId;
@@ -137,7 +130,6 @@ const Sidebar = ({ onSelectChat, selectedChatId }) => {
         if (existingChat) {
             onSelectChat(existingChat);
         } else {
-            // Yangi vaqtinchalik chat yaratish
             onSelectChat({
                 id: null,
                 tempId: `temp-${partnerId}`,
@@ -179,11 +171,10 @@ const Sidebar = ({ onSelectChat, selectedChatId }) => {
     };
 
     return (
-        <div className="w-80 border-r border-white/5 flex flex-col bg-[#0a0a0c] h-full overflow-hidden select-none relative">
-            {/* Overlay for closing menu */}
+        /* O'ZGARTIRILGAN QISM: w-80 o'rniga dinamik kenglik berildi */
+        <div className="w-full md:w-80 border-r border-white/5 flex flex-col bg-[#0a0a0c] h-full overflow-hidden select-none relative shrink-0">
             {openMenuId && <div className="fixed inset-0 z-40" onClick={() => setOpenMenuId(null)} />}
 
-            {/* Sidebar Menu */}
             <AnimatePresence>
                 {showMenu && (
                     <>
@@ -204,7 +195,6 @@ const Sidebar = ({ onSelectChat, selectedChatId }) => {
                 )}
             </AnimatePresence>
 
-            {/* Delete Confirmation Modal */}
             <AnimatePresence>
                 {chatToDelete && (
                     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
@@ -223,7 +213,6 @@ const Sidebar = ({ onSelectChat, selectedChatId }) => {
                 )}
             </AnimatePresence>
 
-            {/* Header */}
             <div className="p-4 space-y-4">
                 <div className="flex items-center justify-between">
                     <button onClick={() => setShowMenu(!showMenu)} className="p-2 hover:bg-white/5 rounded-xl transition-colors text-gray-400">
@@ -246,7 +235,6 @@ const Sidebar = ({ onSelectChat, selectedChatId }) => {
                 </div>
             </div>
 
-            {/* Main Content */}
             <div className="flex-1 overflow-y-auto px-3 space-y-1 custom-scrollbar">
                 <AnimatePresence mode="wait">
                     {searchQuery.length > 0 ? (
