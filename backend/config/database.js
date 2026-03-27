@@ -28,11 +28,11 @@ const connectDB = async () => {
         await sequelize.authenticate();
         console.log('✅ PostgreSQL ma\'lumotlar bazasiga muvaffaqiyatli ulandingiz.');
 
-        // 🔥 DIQQAT: force: true bazani butunlay tozalab, jadvallarni qayta ochadi.
-        // Bir marta ishlatib bo'lgach, buni yana { alter: true } ga qaytarib qo'yishni unutmang!
-        await sequelize.sync({ force: true });
-
-        console.log('🚀 Baza TOZALANDI va modellar qayta sinxronlashtirildi.');
+        // ⚠️ DIQQAT: force: true bazani drop qilib, noldan ochadi. 
+        // Hamma eski ma'lumotlar o'chib ketadi!
+        await sequelize.sync({ force: true }); 
+        
+        console.log('🚀 Baza TOZALANDI va modellar qayta yaratildi.');
     } catch (error) {
         console.error('❌ Bazaga ulanishda xatolik yuz berdi:', error.message);
         process.exit(1);

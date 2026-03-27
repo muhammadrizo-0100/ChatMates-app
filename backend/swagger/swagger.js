@@ -9,15 +9,15 @@ const options = {
             version: "1.0.0",
             description: "Node.js, Sequelize va PostgreSQL yordamida yaratilgan Chat API",
         },
-        // SERVERS qismini mana shunday massiv ko'rinishida yozamiz
+        // Swagger config yoki definition qismi
         servers: [
-            {
-                url: "http://localhost:5000",
-                description: "Local server (Default)",
-            },
             {
                 url: "https://chat-mates-backend-spen.onrender.com",
                 description: "Production server (Render)",
+            },
+            {
+                url: "http://localhost:5000",
+                description: "Local server (Default)",
             },
         ],
         components: {
