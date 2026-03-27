@@ -20,13 +20,11 @@ const Sidebar = ({ onSelectChat, selectedChatId }) => {
 
     const currentUserId = useMemo(() => String(user?.id || user?._id), [user]);
 
-    // Partnerni aniqlash funksiyasi
     const getPartner = useCallback((chat) => {
         if (!chat) return null;
         return String(chat.user1_id) === currentUserId ? chat.user2 : chat.user1;
     }, [currentUserId]);
 
-    // Chatlarni yuklash
     const fetchChats = useCallback(async () => {
         try {
             setIsLoading(true);
@@ -36,8 +34,8 @@ const Sidebar = ({ onSelectChat, selectedChatId }) => {
             );
             setChats(sortedChats);
         } catch (err) {
-            console.error("Chatlarni yuklashda xatolik:", err);
-            toast.error("Suhbatlarni yuklab bo'lmadi");
+            console.error("Error loading chats:", err);
+            toast.error("Failed to load conversations");
         } finally {
             setIsLoading(false);
         }
@@ -45,7 +43,6 @@ const Sidebar = ({ onSelectChat, selectedChatId }) => {
 
     useEffect(() => { fetchChats(); }, [fetchChats]);
 
-    // Socket orqali real-time yangilash
     useEffect(() => {
         if (!socket) return;
 
@@ -61,14 +58,13 @@ const Sidebar = ({ onSelectChat, selectedChatId }) => {
                         ...updatedChats[chatIndex],
                         last_message: msg.text,
                         updatedAt: new Date().toISOString(),
-                        // Agar chat ochiq bo'lmasa, o'qilmaganlar sonini oshirish
                         unread_count: isNotActive
                             ? (updatedChats[chatIndex].unread_count || 0) + 1
                             : 0
                     };
                     return updatedChats.sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
                 } else {
-                    fetchChats(); // Yangi chat bo'lsa ro'yxatni yangilash
+                    fetchChats();
                     return prev;
                 }
             });
@@ -78,7 +74,6 @@ const Sidebar = ({ onSelectChat, selectedChatId }) => {
         return () => socket.off("message received", handleNewMessage);
     }, [socket, fetchChats, selectedChatId]);
 
-    // Qidiruv mantiqi
     useEffect(() => {
         const delayDebounceFn = setTimeout(async () => {
             const trimmedQuery = searchQuery.trim();
@@ -128,16 +123,15 @@ const Sidebar = ({ onSelectChat, selectedChatId }) => {
             await chatApi.deleteChat(chatToDelete);
             setChats(prev => prev.filter(c => c.id !== chatToDelete));
             if (String(selectedChatId) === String(chatToDelete)) onSelectChat(null);
-            toast.success("Chat o'chirildi");
+            toast.success("Chat deleted");
         } catch (err) {
-            toast.error("O'chirishda xatolik yuz berdi");
+            toast.error("Error deleting chat");
         } finally {
             setChatToDelete(null);
             setOpenMenuId(null);
         }
     };
 
-    // Vaqtni chiroyli ko'rsatish funksiyasi
     const formatChatTime = (dateStr) => {
         if (!dateStr) return "";
         const date = new Date(dateStr);
@@ -145,7 +139,7 @@ const Sidebar = ({ onSelectChat, selectedChatId }) => {
         const diffInDays = Math.floor((now - date) / (1000 * 60 * 60 * 24));
 
         if (diffInDays === 0) return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-        if (diffInDays === 1) return "Kecha";
+        if (diffInDays === 1) return "Yesterday";
         if (diffInDays < 7) return date.toLocaleDateString([], { weekday: 'short' });
         return date.toLocaleDateString([], { month: 'short', day: 'numeric' });
     };
@@ -153,44 +147,40 @@ const Sidebar = ({ onSelectChat, selectedChatId }) => {
     return (
         <div className="w-80 border-r border-white/5 flex flex-col bg-[#0a0a0c] h-full overflow-hidden select-none relative">
 
-            {/* Click Outside for Context Menu */}
             {openMenuId && <div className="fixed inset-0 z-40" onClick={() => setOpenMenuId(null)} />}
 
-            {/* Menu overlay */}
             <AnimatePresence>
                 {showMenu && (
                     <>
                         <div className="fixed inset-0 z-30" onClick={() => setShowMenu(false)} />
                         <motion.div initial={{ x: -20, opacity: 0 }} animate={{ x: 0, opacity: 1 }} exit={{ x: -20, opacity: 0 }} className="absolute left-4 top-16 w-52 bg-[#16161a] border border-white/10 rounded-2xl shadow-2xl z-40 p-2">
                             <div className="px-4 py-3 border-b border-white/5 mb-1 text-xs">
-                                <p className="text-gray-500">Profil</p>
+                                <p className="text-gray-500">Profile</p>
                                 <p className="text-white font-bold truncate">{user?.username || user?.email}</p>
                             </div>
-                            <button className="w-full flex items-center gap-3 p-3 text-gray-400 hover:bg-white/5 rounded-xl text-sm transition-colors"><Settings size={18} /> Sozlamalar</button>
-                            <button onClick={logout} className="w-full flex items-center gap-3 p-3 text-red-400 hover:bg-red-400/10 rounded-xl text-sm font-medium transition-colors"><LogOut size={18} /> Chiqish</button>
+                            <button className="w-full flex items-center gap-3 p-3 text-gray-400 hover:bg-white/5 rounded-xl text-sm transition-colors"><Settings size={18} /> Settings</button>
+                            <button onClick={logout} className="w-full flex items-center gap-3 p-3 text-red-400 hover:bg-red-400/10 rounded-xl text-sm font-medium transition-colors"><LogOut size={18} /> Logout</button>
                         </motion.div>
                     </>
                 )}
             </AnimatePresence>
 
-            {/* Delete Confirmation Modal */}
             <AnimatePresence>
                 {chatToDelete && (
                     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
                         <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="bg-[#16161a] border border-white/10 p-6 rounded-3xl max-w-sm w-full text-center">
                             <div className="w-12 h-12 bg-red-500/10 text-red-500 rounded-full flex items-center justify-center mx-auto mb-4"><Trash2 size={24} /></div>
-                            <h3 className="text-lg font-bold text-white mb-2">Chatni o'chirish?</h3>
-                            <p className="text-gray-400 text-xs mb-6">Barcha xabarlar butunlay yo'qoladi. Bu amalni qaytarib bo'lmaydi.</p>
+                            <h3 className="text-lg font-bold text-white mb-2">Delete Chat?</h3>
+                            <p className="text-gray-400 text-xs mb-6">All messages will be permanently removed. This action cannot be undone.</p>
                             <div className="flex gap-3">
-                                <button onClick={() => setChatToDelete(null)} className="flex-1 py-3 rounded-xl bg-white/5 text-white text-sm hover:bg-white/10 transition-colors">Bekor qilish</button>
-                                <button onClick={confirmDelete} className="flex-1 py-3 rounded-xl bg-red-500 text-white text-sm font-bold hover:bg-red-600 transition-colors">O'chirish</button>
+                                <button onClick={() => setChatToDelete(null)} className="flex-1 py-3 rounded-xl bg-white/5 text-white text-sm hover:bg-white/10 transition-colors">Cancel</button>
+                                <button onClick={confirmDelete} className="flex-1 py-3 rounded-xl bg-red-500 text-white text-sm font-bold hover:bg-red-600 transition-colors">Delete</button>
                             </div>
                         </motion.div>
                     </div>
                 )}
             </AnimatePresence>
 
-            {/* Header */}
             <div className="p-4 space-y-4">
                 <div className="flex items-center justify-between">
                     <button onClick={() => setShowMenu(!showMenu)} className="p-2 hover:bg-white/5 rounded-xl transition-colors text-gray-400">
@@ -206,21 +196,20 @@ const Sidebar = ({ onSelectChat, selectedChatId }) => {
                     <Search className={`absolute left-4 top-1/2 -translate-y-1/2 transition-colors ${isSearching ? 'text-emerald-500' : 'text-gray-500'}`} size={18} />
                     <input
                         type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)}
-                        placeholder="Foydalanuvchilarni qidirish..."
+                        placeholder="Search users..."
                         className="w-full bg-white/5 border border-white/10 rounded-2xl py-3 pl-12 pr-4 text-sm text-white focus:border-emerald-500/50 outline-none transition-all placeholder:text-gray-600"
                     />
                     {isSearching && <Loader2 className="absolute right-4 top-1/2 -translate-y-1/2 animate-spin text-emerald-500" size={16} />}
                 </div>
             </div>
 
-            {/* Chat List */}
             <div className="flex-1 overflow-y-auto px-3 space-y-1 custom-scrollbar">
                 <AnimatePresence mode="wait">
                     {searchQuery.length > 0 ? (
                         <motion.div key="search" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
-                            <p className="px-4 py-2 text-[10px] uppercase tracking-[0.2em] text-gray-500 font-bold">Qidiruv natijalari</p>
+                            <p className="px-4 py-2 text-[10px] uppercase tracking-[0.2em] text-gray-500 font-bold">Search Results</p>
                             {searchResults.length === 0 && !isSearching && (
-                                <p className="px-4 py-4 text-sm text-gray-600 italic">Hech kim topilmadi</p>
+                                <p className="px-4 py-4 text-sm text-gray-600 italic">No users found</p>
                             )}
                             {searchResults.map(sUser => (
                                 <div key={sUser.id || sUser._id} onClick={() => handleSearchSelect(sUser)} className="flex items-center gap-4 p-3 hover:bg-emerald-500/10 cursor-pointer rounded-2xl transition-all group">
@@ -238,8 +227,8 @@ const Sidebar = ({ onSelectChat, selectedChatId }) => {
                                 <div className="flex flex-col items-center py-20 opacity-20"><Loader2 className="animate-spin mb-2" /></div>
                             ) : chats.length === 0 ? (
                                 <div className="text-center py-20">
-                                    <p className="text-xs text-gray-600">Suhbatlar mavjud emas</p>
-                                    <p className="text-[10px] text-gray-700 mt-1">Qidiruv orqali do'stlaringizni toping</p>
+                                    <p className="text-xs text-gray-600">No conversations yet</p>
+                                    <p className="text-[10px] text-gray-700 mt-1">Search for friends to start chatting</p>
                                 </div>
                             ) : (
                                 chats.map(chat => {
@@ -263,7 +252,7 @@ const Sidebar = ({ onSelectChat, selectedChatId }) => {
                                             <div className="flex-1 min-w-0">
                                                 <div className="flex justify-between items-center mb-0.5">
                                                     <h3 className={`text-sm font-bold truncate ${isActive ? 'text-black' : 'text-white'}`}>
-                                                        {partner?.username || "Noma'lum"}
+                                                        {partner?.username || "Unknown"}
                                                     </h3>
                                                     <span className={`text-[10px] ${isActive ? 'text-black/60' : 'text-gray-500'}`}>
                                                         {formatChatTime(chat.updatedAt)}
@@ -271,7 +260,7 @@ const Sidebar = ({ onSelectChat, selectedChatId }) => {
                                                 </div>
                                                 <div className="flex justify-between items-center">
                                                     <p className={`text-xs truncate pr-2 ${isActive ? 'text-black/70 font-medium' : 'text-gray-500'}`}>
-                                                        {chat.last_message || "Suhbatni boshlang..."}
+                                                        {chat.last_message || "Start a conversation..."}
                                                     </p>
                                                     {chat.unread_count > 0 && !isActive && (
                                                         <span className="bg-emerald-500 text-black text-[10px] font-black h-5 min-w-[20px] px-1.5 rounded-full flex items-center justify-center animate-pulse">
@@ -281,26 +270,58 @@ const Sidebar = ({ onSelectChat, selectedChatId }) => {
                                                 </div>
                                             </div>
 
-                                            <div className="opacity-0 group-hover:opacity-100 relative transition-opacity">
-                                                <button onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    setOpenMenuId(openMenuId === chat.id ? null : chat.id);
-                                                }} className={`p-1 rounded-lg ${isActive ? 'hover:bg-black/10' : 'hover:bg-white/10'}`}>
+                                            <div className="relative">
+                                                <button
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        setOpenMenuId(openMenuId === chat.id ? null : chat.id);
+                                                    }}
+                                                    className={`p-1 rounded-lg transition-all z-10 relative 
+                                                        ${isActive ? 'hover:bg-black/10' : 'hover:bg-white/10'} 
+                                                        ${openMenuId === chat.id ? 'opacity-100' : 'opacity-30 group-hover:opacity-100'}
+                                                    `}
+                                                >
                                                     <MoreVertical size={16} />
                                                 </button>
 
                                                 <AnimatePresence>
                                                     {openMenuId === chat.id && (
-                                                        <motion.div
-                                                            initial={{ opacity: 0, scale: 0.95 }}
-                                                            animate={{ opacity: 1, scale: 1 }}
-                                                            exit={{ opacity: 0, scale: 0.95 }}
-                                                            className="absolute right-0 top-8 w-36 bg-[#1b1b21] border border-white/10 rounded-xl shadow-2xl z-50 overflow-hidden"
-                                                        >
-                                                            <button onClick={(e) => { e.stopPropagation(); setChatToDelete(chat.id); }} className="w-full flex items-center gap-2 px-4 py-3 text-xs text-red-500 hover:bg-red-500/10 transition-colors">
-                                                                <Trash2 size={14} /> Chatni o'chirish
-                                                            </button>
-                                                        </motion.div>
+                                                        <>
+                                                            <div
+                                                                className="fixed inset-0 z-[45]"
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    setOpenMenuId(null);
+                                                                }}
+                                                            />
+
+                                                            <motion.div
+                                                                onClick={(e) => e.stopPropagation()}
+                                                                initial={{ opacity: 0, scale: 0.95, y: -10 }}
+                                                                animate={{ opacity: 1, scale: 1, y: 0 }}
+                                                                exit={{ opacity: 0, scale: 0.95, y: -10 }}
+                                                                className="absolute right-0 top-10 w-40 bg-[#1b1b21] border border-white/10 rounded-xl shadow-2xl z-[50] overflow-hidden"
+                                                            >
+                                                                <button
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        setChatToDelete(chat.id);
+                                                                    }}
+                                                                    className="w-full flex items-center gap-2 px-4 py-3 text-xs text-red-500 hover:bg-red-500/10 transition-colors"
+                                                                >
+                                                                    <Trash2 size={14} /> Delete Chat
+                                                                </button>
+                                                                <button
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        setOpenMenuId(null);
+                                                                    }}
+                                                                    className="w-full flex items-center gap-2 px-4 py-2 text-[10px] text-gray-500 hover:bg-white/5 border-t border-white/5 transition-colors"
+                                                                >
+                                                                    Close
+                                                                </button>
+                                                            </motion.div>
+                                                        </>
                                                     )}
                                                 </AnimatePresence>
                                             </div>
